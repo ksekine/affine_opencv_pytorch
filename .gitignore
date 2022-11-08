@@ -1,0 +1,6 @@
+__pycache__/
+.DS_Store
+data/diff.png
+data/output_numpy.png
+data/output_torch.png
+venv/
