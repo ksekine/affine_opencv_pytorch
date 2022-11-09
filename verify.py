@@ -3,6 +3,9 @@ import torch
 import torch.nn.functional as F
 import cv2
 import numpy as np
+import argparse
+import os
+import random
 
 
 def get_N(W, H):
@@ -89,11 +92,24 @@ def cvt_ThetaToM(theta, w, h, return_inv=False):
 
 
 if __name__ == '__main__':
-    input_numpy = cv2.imread('./data/inoki_640x640.JPG')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--load_file', type=str, default='./data/inoki_640x640.JPG', help='input image')
+    parser.add_argument('--save_dir', type=str, default='./data', help='output dir')
+    parser.add_argument('--trans_type', type=str, choices=['random', 'translation'], default='random', help='transformation type')
+    args = parser.parse_args()
+
+    input_numpy = cv2.imread(args.load_file)
 
     w = input_numpy.shape[1]
     h = input_numpy.shape[0]
-    M = np.random.rand(2, 3)
+    if args.trans_type == 'random':
+        M = np.random.rand(2, 3)
+    elif args.trans_type == 'translation':
+        M = np.zeros((2, 3))
+        M[0, 0] = 1.0
+        M[1, 1] = 1.0
+        M[0, 2] = random.uniform(-w, w)
+        M[1, 2] = random.uniform(-h, h)
 
     # Convert M -> theta -> M2
     # Verify M == M2
@@ -101,9 +117,11 @@ if __name__ == '__main__':
     M2 = cvt_ThetaToM(theta, w, h)
     assert np.allclose(M, M2)
 
+    # Numpy affine transformation
     output_numpy = cv2.warpAffine(input_numpy, M, (input_numpy.shape[1], input_numpy.shape[0]))
-    cv2.imwrite('./data/output_numpy.png', output_numpy)
+    cv2.imwrite(os.path.join(args.save_dir, 'output_numpy.png'), output_numpy)
 
+    # PyTorch affine transformation
     input_torch = torch.from_numpy(input_numpy.astype(np.float32)).clone().permute(2, 0, 1).unsqueeze(0)
     input_torch = input_torch / 255.0
     theta = torch.from_numpy(theta.astype(np.float32)).clone().unsqueeze(0)
@@ -111,10 +129,11 @@ if __name__ == '__main__':
     output_torch = F.grid_sample(input_torch, grid).to('cpu').squeeze().detach().numpy().copy()
     output_torch = output_torch.transpose(1, 2, 0) * 255.0
     output_torch = output_torch.astype(np.uint8)
-    cv2.imwrite('./data/output_torch.png', output_torch)
+    cv2.imwrite(os.path.join(args.save_dir, 'output_torch.png'), output_torch)
 
+    # Diff
     diff = output_numpy - output_torch
     print('diff max: {}'.format(diff.max()))
-    cv2.imwrite('./data/diff.png', diff)
+    cv2.imwrite(os.path.join(args.save_dir, 'diff.png'), diff)
 
     assert np.allclose(output_torch, output_numpy)
